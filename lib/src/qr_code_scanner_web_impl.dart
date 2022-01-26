@@ -5,12 +5,11 @@
 // - https://kevinwilliams.dev/blog/taking-photos-with-flutter-web
 // - https://github.com/cozmo/jsQR
 import 'dart:async';
+import 'package:flutter/material.dart';
 import 'package:universal_html/html.dart' as html;
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:js' as js;
 import 'dart:ui' as ui;
-
-import 'package:flutter/widgets.dart';
 
 ///
 ///call global function jsQR
@@ -55,6 +54,9 @@ class _QrCodeCameraWebImplState extends State<QrCodeCameraWebImpl> {
   html.CanvasRenderingContext2D? _canvas;
   html.MediaStream? _stream;
 
+  late List<html.MediaDeviceInfo> availableDevices;
+  late html.MediaDeviceInfo currentDevice;
+
   @override
   void initState() {
     super.initState();
@@ -71,6 +73,7 @@ class _QrCodeCameraWebImplState extends State<QrCodeCameraWebImpl> {
 
     // Access the webcam stream
     try {
+      getVideoDevices();
       html.window.navigator.mediaDevices?.getUserMedia({
         'video': {'facingMode': 'environment'}
       }).then((html.MediaStream stream) {
@@ -98,17 +101,19 @@ class _QrCodeCameraWebImplState extends State<QrCodeCameraWebImpl> {
       }
     }
 
-//        .mediaDevices   //don't work rear camera
-//        .getUserMedia({
-//      'video': {
-//        'facingMode': 'environment',
-//      }
-//    })
-
     _canvasElement = html.CanvasElement();
     _canvas = _canvasElement.getContext("2d") as html.CanvasRenderingContext2D?;
     Future.delayed(Duration(milliseconds: 20), () {
       tick();
+    });
+  }
+
+  getVideoDevices() async {
+    var devices = await html.window.navigator.mediaDevices?.enumerateDevices();
+    devices?.forEach((element) {
+      if (element.kind == 'videoinput') {
+        availableDevices.add(element);
+      }
     });
   }
 
@@ -148,17 +153,37 @@ class _QrCodeCameraWebImplState extends State<QrCodeCameraWebImpl> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: double.infinity,
-      width: double.infinity,
-      child: FittedBox(
-        fit: widget.fit,
-        child: SizedBox(
-          width: 400,
-          height: 300,
-          child: _videoWidget,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        DropdownButton(
+          value: currentDevice,
+          onChanged: (dynamic newValue) {
+            setState(() {
+              currentDevice = newValue!;
+            });
+          },
+          items: availableDevices.map<DropdownMenuItem>((value) {
+            return DropdownMenuItem(
+              value: value,
+              child: Text('${value.label}'),
+            );
+          }).toList(),
         ),
-      ),
+        const SizedBox(height: 8),
+        Container(
+          height: double.infinity,
+          width: double.infinity,
+          child: FittedBox(
+            fit: widget.fit,
+            child: SizedBox(
+              width: 400,
+              height: 300,
+              child: _videoWidget,
+            ),
+          ),
+        ),
+      ],
     );
   }
 
