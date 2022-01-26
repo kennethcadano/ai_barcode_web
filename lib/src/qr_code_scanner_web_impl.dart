@@ -54,13 +54,14 @@ class _QrCodeCameraWebImplState extends State<QrCodeCameraWebImpl> {
   html.CanvasRenderingContext2D? _canvas;
   html.MediaStream? _stream;
 
-  late List<html.MediaDeviceInfo> availableDevices;
-  late html.MediaDeviceInfo currentDevice;
+  List<html.MediaDeviceInfo> availableDevices = [];
+  html.MediaDeviceInfo? currentDevice;
+
+  var _loading = false;
 
   @override
   void initState() {
     super.initState();
-
     // Create a video element which will be provided with stream source
     _video = html.VideoElement();
     // Register an webcam
@@ -70,12 +71,46 @@ class _QrCodeCameraWebImplState extends State<QrCodeCameraWebImpl> {
     // Create video widget
     _videoWidget = HtmlElementView(
         key: UniqueKey(), viewType: 'webcamVideoElement$_uniqueKey');
-
     // Access the webcam stream
+    getVideoDevices();
+  }
+
+  getVideoDevices() async {
+    setState(() {
+      _loading = true;
+    });
+    var devices = await html.window.navigator.mediaDevices?.enumerateDevices();
+    devices?.forEach((element) {
+      if (element.kind == 'videoinput') {
+        setState(() {
+          availableDevices.add(element);
+        });
+      }
+    });
+    if (availableDevices.length > 1) {
+      setState(() {
+        currentDevice = availableDevices[1];
+      });
+    } else {
+      setState(() {
+        currentDevice = availableDevices.first;
+      });
+    }
+    await Future.delayed(const Duration(seconds: 1));
+    setCurrentCamera(currentDevice!);
+  }
+
+  setCurrentCamera(html.MediaDeviceInfo device) {
+    if (_stream?.active ?? false) {
+      _video.pause();
+      _stream?.getTracks().forEach((track) => track.stop());
+    }
+    setState(() {
+      _loading = true;
+    });
     try {
-      getVideoDevices();
       html.window.navigator.mediaDevices?.getUserMedia({
-        'video': {'facingMode': 'environment'}
+        'video': {'deviceId': device.deviceId}
       }).then((html.MediaStream stream) {
         _stream = stream;
         _video.srcObject = stream;
@@ -106,23 +141,12 @@ class _QrCodeCameraWebImplState extends State<QrCodeCameraWebImpl> {
     Future.delayed(Duration(milliseconds: 20), () {
       tick();
     });
-  }
-
-  getVideoDevices() async {
-    var devices = await html.window.navigator.mediaDevices?.enumerateDevices();
-    devices?.forEach((element) {
-      if (element.kind == 'videoinput') {
-        availableDevices.add(element);
-      }
+    setState(() {
+      _loading = false;
     });
   }
 
-  bool _disposed = false;
   tick() {
-    if (_disposed) {
-      return;
-    }
-
     if (_video.readyState == _HAVE_ENOUGH_DATA) {
       _canvasElement.width = _video.videoWidth;
       _canvasElement.height = _video.videoHeight;
@@ -153,53 +177,56 @@ class _QrCodeCameraWebImplState extends State<QrCodeCameraWebImpl> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        DropdownButton(
-          value: currentDevice,
-          onChanged: (dynamic newValue) {
-            setState(() {
-              currentDevice = newValue!;
-            });
-          },
-          items: availableDevices.map<DropdownMenuItem>((value) {
-            return DropdownMenuItem(
-              value: value,
-              child: Text('${value.label}'),
-            );
-          }).toList(),
-        ),
-        const SizedBox(height: 8),
-        Container(
-          height: double.infinity,
-          width: double.infinity,
-          child: FittedBox(
-            fit: widget.fit,
-            child: SizedBox(
-              width: 400,
-              height: 300,
-              child: _videoWidget,
-            ),
-          ),
-        ),
-      ],
-    );
+    return _loading
+        ? const CircularProgressIndicator.adaptive()
+        : Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  availableDevices.isNotEmpty
+                      ? DropdownButton(
+                          value: currentDevice,
+                          onChanged: (dynamic newValue) {
+                            setState(() {
+                              currentDevice = newValue!;
+                            });
+                            setCurrentCamera(currentDevice!);
+                          },
+                          items: availableDevices
+                              .map<DropdownMenuItem>(
+                                  (value) => DropdownMenuItem(
+                                        value: value,
+                                        child: Text('${value.label}'),
+                                      ))
+                              .toList(),
+                        )
+                      : Container(),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: Container(
+                  height: double.infinity,
+                  width: double.infinity,
+                  child: FittedBox(
+                    fit: widget.fit,
+                    child: SizedBox(
+                      width: 400,
+                      height: 300,
+                      child: _videoWidget,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
   }
 
   @override
   void dispose() {
-    _disposed = true;
+    _stream?.getTracks().forEach((track) => track.stop());
     _video.pause();
-    Future.delayed(Duration(milliseconds: 1), () {
-      try {
-        _stream?.getTracks().forEach((mt) {
-          mt.stop();
-        });
-      } catch (e) {
-        print('error on dispose qrcode: $e');
-      }
-    });
     super.dispose();
   }
 }
