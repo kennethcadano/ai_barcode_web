@@ -206,16 +206,12 @@ class _QrCodeCameraWebImplState extends State<QrCodeCameraWebImpl> {
               ),
               const SizedBox(height: 8),
               Expanded(
-                child: Container(
-                  height: double.infinity,
-                  width: double.infinity,
-                  child: FittedBox(
-                    fit: widget.fit,
-                    child: SizedBox(
-                      width: 400,
-                      height: 300,
-                      child: _videoWidget,
-                    ),
+                child: FittedBox(
+                  fit: BoxFit.contain,
+                  child: SizedBox(
+                    width: 400,
+                    height: 300,
+                    child: _videoWidget,
                   ),
                 ),
               ),
